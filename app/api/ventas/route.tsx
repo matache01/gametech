@@ -2,7 +2,7 @@
 
 const BACKEND_BASE =
   process.env.BACKEND_BASE_URL ||
-  "https://backendtransaccionesgametech-production.up.railway.app";
+  "https://backendtransaccionesgametech-production-0823.up.railway.app";
 
 const API_PREFIX = "/api/pedidos";
 
@@ -53,11 +53,19 @@ export async function GET(req: Request) {
     // Query param overrides
     if (params.has("id")) {
       const id = params.get("id");
-      const result = await forwardFetch(`${API_PREFIX}/${encodeURIComponent(id)}`);
+      if (!id) {
+        return jsonResponse({ error: "ID is required" }, 400);
+      }
+      const result = await forwardFetch(
+        `${API_PREFIX}/${encodeURIComponent(id)}`
+      );
       return jsonResponse(result.data, result.status);
     }
     if (params.has("usuarioId")) {
       const usuarioId = params.get("usuarioId");
+      if (!usuarioId) {
+        return jsonResponse({ error: "Usuario ID is required" }, 400);
+      }
       const result = await forwardFetch(
         `${API_PREFIX}/usuario/${encodeURIComponent(usuarioId)}`
       );
@@ -67,7 +75,9 @@ export async function GET(req: Request) {
     if (after.length === 1) {
       // /api/ventas/{id}
       const id = after[0];
-      const result = await forwardFetch(`${API_PREFIX}/${encodeURIComponent(id)}`);
+      const result = await forwardFetch(
+        `${API_PREFIX}/${encodeURIComponent(id)}`
+      );
       return jsonResponse(result.data, result.status);
     } else if (after.length === 2 && after[0] === "usuario") {
       // /api/ventas/usuario/{usuarioId}

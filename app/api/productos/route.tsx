@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
  */
 
 const BACKEND_BASE =
-  "https://backendinventariogametech1-production.up.railway.app";
+  "https://backendinventariogametech1-production-541c.up.railway.app";
 const DEFAULT_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",

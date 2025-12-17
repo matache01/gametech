@@ -12,20 +12,86 @@ import {
 } from "react-bootstrap";
 import Link from "next/link";
 import { useCart } from "./context/CartContext";
-import { getProductImages } from "./lib/assetsClient";
+// Eliminada la importación de getProductImages:
+// import { getProductImages } from "./lib/assetsClient";
+
+// --- LÓGICA DE IMAGEN DE GITHUB RAW (INTEGRADA) ---
+const RAW_BASE =
+  "https://raw.githubusercontent.com/felipesalazar24/ctrlstore-images/main/products";
+const PLACEHOLDER_URL = "/assets/productos/placeholder.png";
+const FALLBACK_PLACEHOLDER =
+  "https://via.placeholder.com/300x200/cccccc/969696?text=Imagen+No+Disponible";
+const MAX_THUMBS = 4; // Usamos 4 para generar las 4 vistas (1), (2), (3), (4)
+
+function isAbsoluteUrl(s) {
+  return /^data:|^https?:\/\//i.test(String(s || ""));
+}
+
+function canonicalCategory(cat) {
+  if (!cat) return "Mouse";
+  try {
+    const s = String(cat).toLowerCase().trim();
+    const map = {
+      monitor: "Monitor",
+      monitors: "Monitor",
+      mouse: "Mouse",
+      mice: "Mouse",
+      mouses: "Mouse",
+      teclado: "Teclado",
+      teclados: "Teclado",
+      audifono: "Audifono",
+      audifonos: "Audifono",
+    };
+    if (map[s]) return map[s];
+    const original = String(cat).trim();
+    if (!original) return "Mouse";
+    return original.charAt(0).toUpperCase() + original.slice(1).toLowerCase();
+  } catch {
+    return "Mouse";
+  }
+}
+
+// Función para construir la URL completa de GitHub Raw.
+function makeRawUrlIfNeeded(maybeUrlOrFilename, categoria = "Mouse") {
+  if (!maybeUrlOrFilename) return null;
+  const s = String(maybeUrlOrFilename).trim();
+  if (!s) return null;
+
+  if (isAbsoluteUrl(s) || s.startsWith("/")) return s;
+
+  try {
+    const catNorm = canonicalCategory(categoria);
+    const encodedCat = encodeURIComponent(catNorm);
+    const encodedFile = encodeURIComponent(s).replace(/%2F/g, "/");
+
+    return `${RAW_BASE}/${encodedCat}/${encodedFile}`;
+  } catch {
+    return s;
+  }
+}
+
+// Helper seguro para obtener la fuente de la imagen
+const safeSrc = (s, categoria) => {
+  if (!s) return PLACEHOLDER_URL;
+  const str = String(s);
+
+  if (isAbsoluteUrl(str) || str.startsWith("/")) return str;
+
+  // Intenta construir la URL de GitHub Raw
+  return makeRawUrlIfNeeded(str, categoria) || PLACEHOLDER_URL;
+};
 
 // Componente para imagen con placeholder en caso de error
 const ProductImage = (props) => {
-  const [imgSrc, setImgSrc] = useState(props.src);
+  const [imgSrc, setImgSrc] = useState(props.src || PLACEHOLDER_URL);
 
-  const handleError = () => {
-    setImgSrc(
-      "https://via.placeholder.com/300x200/cccccc/969696?text=Imagen+No+Disponible"
-    );
+  const handleError = (e) => {
+    e.currentTarget.onerror = null;
+    setImgSrc(FALLBACK_PLACEHOLDER);
   };
 
   useEffect(() => {
-    setImgSrc(props.src);
+    setImgSrc(props.src || PLACEHOLDER_URL);
   }, [props.src]);
 
   return (
@@ -38,8 +104,10 @@ const ProductImage = (props) => {
     />
   );
 };
+// --- FIN LÓGICA DE IMAGEN INTEGRADA ---
 
 const loadProducts = async () => {
+  /* ... */
   try {
     const res = await fetch("/api/productos");
     if (!res.ok) return [];
@@ -51,6 +119,7 @@ const loadProducts = async () => {
 };
 
 const getOfferForProduct = (product) => {
+  /* ... */
   if (!product) return null;
   const oferta = !!product.oferta;
   const percent = Number(product.oferPorcentaje || 0) || 0;
@@ -63,6 +132,7 @@ const getOfferForProduct = (product) => {
 };
 
 const getEffectivePrice = (product, offer) => {
+  /* ... */
   const raw = Number(product.precio ?? product.price ?? 0) || 0;
   if (!offer) return { oldPrice: null, price: raw, percent: 0 };
   const oldPrice = Number(offer.oldPrice ?? raw) || raw;
@@ -78,8 +148,8 @@ const getEffectivePrice = (product, offer) => {
   return { oldPrice: oldPrice || null, price, percent: percent || 0 };
 };
 
-// Helper para leer respuesta flexible (JSON/text/204)
 async function parseResponseSafely(res) {
+  /* ... */
   if (!res) return null;
   const contentType = res.headers?.get?.("content-type") || "";
   if (res.status === 204) return { ok: true, status: 204, data: null };
@@ -97,13 +167,14 @@ async function parseResponseSafely(res) {
   }
 }
 
+// ----------------------------------------------------------------------------------
+
 export default function HomePage() {
   const [productos, setProductos] = useState([]);
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // imagenes cache/local state para UI (map productId -> { primary, images })
   const [imagesMap, setImagesMap] = useState(new Map());
 
   const { addToCart } = useCart();
@@ -116,7 +187,6 @@ export default function HomePage() {
       setError(null);
 
       try {
-        // Cargar productos y ventas (nueva API /api/ventas)
         const [prodData, ventasRes] = await Promise.all([
           loadProducts(),
           fetch(`/api/ventas?ts=${Date.now()}`).catch(() => null),
@@ -135,7 +205,6 @@ export default function HomePage() {
                 parsed.data?.ventas ??
                 parsed.data ??
                 [];
-            // ensure array
             if (!Array.isArray(ventasData)) ventasData = [];
           } else {
             ventasData = [];
@@ -149,19 +218,41 @@ export default function HomePage() {
         setProductos(Array.isArray(prodData) ? prodData : []);
         setSales(Array.isArray(ventasData) ? ventasData : []);
 
-        // fetch images for first 12 candidates (top will be computed later)
-        const forProducts = Array.isArray(prodData)
-          ? prodData.slice(0, 12)
-          : [];
-        const promises = forProducts.map(async (p) => {
-          const imgs = await getProductImages(
-            p.nombre ?? p.title ?? String(p.id ?? p._id),
-            p.atributo ?? p.categoria ?? "",
-            4
-          ).catch(() => []);
-          return [String(p.id ?? p._id ?? p.nombre), imgs];
+        // Generar URLs de imágenes aquí.
+        const forProducts = Array.isArray(prodData) ? prodData : []; // Procesa todos los productos, no solo los 12
+
+        const results = forProducts.map((p) => {
+          const key = String(p.id ?? p._id ?? p.nombre);
+          const category = p.atributo ?? p.categoria ?? "Mouse";
+          const assetList = [];
+
+          // *** Lógica para generar la URL principal usando el formato (1).jpg ***
+          if (p.nombre) {
+            const base = String(p.nombre).replace("%", "").trim();
+            // Solo necesitamos la primera imagen para el Home Page
+            const url = makeRawUrlIfNeeded(`${base}(1).jpg`, category);
+            if (url) assetList.push(url);
+          }
+
+          // Fallback: Si no se pudo generar la URL numerada, usar la 'imagen' o 'assets' original
+          if (assetList.length === 0 && p.imagen) {
+            assetList.push(safeSrc(p.imagen, category));
+          } else if (
+            assetList.length === 0 &&
+            Array.isArray(p.assets) &&
+            p.assets.length
+          ) {
+            assetList.push(safeSrc(p.assets[0], category));
+          }
+
+          // Si todo falla, al menos el placeholder se usará en safeSrc del render.
+          if (assetList.length === 0) {
+            assetList.push(PLACEHOLDER_URL);
+          }
+
+          return [key, assetList];
         });
-        const results = await Promise.all(promises);
+
         if (!mounted) return;
         setImagesMap((prev) => {
           const map = new Map(prev);
@@ -203,10 +294,8 @@ export default function HomePage() {
     );
   }
 
-  // Construir mapa de ventas: soporta múltiples formas de estructura de la API ventas
   const soldMap = {};
   for (const venta of Array.isArray(sales) ? sales : []) {
-    // ventas pueden contener: items, detalles, orderItems, lineItems, productos
     const items =
       venta.items ??
       venta.detalles ??
@@ -216,7 +305,6 @@ export default function HomePage() {
       [];
     if (!Array.isArray(items)) continue;
     for (const it of items) {
-      // distintos nombres posibles para id y cantidad
       const pid =
         it.productoId ??
         it.productId ??
@@ -249,20 +337,6 @@ export default function HomePage() {
 
   const hasSales = top.some((p) => (p.totalSold || 0) > 0);
   const destacados = hasSales ? top : (productsWithSales || []).slice(0, 8);
-
-  const safeSrc = (s) => {
-    if (!s)
-      return "https://via.placeholder.com/300x200/cccccc/969696?text=Imagen+No+Disponible";
-    try {
-      const str = String(s);
-      if (str.startsWith("data:")) return str;
-      if (typeof window !== "undefined" && !/^https?:\/\//i.test(str))
-        return new URL(str, window.location.origin).href;
-      return str;
-    } catch {
-      return String(s);
-    }
-  };
 
   const handleAddToCart = (product, price) => {
     try {
@@ -355,11 +429,16 @@ export default function HomePage() {
                     </Badge>
                   ) : null}
                   <ProductImage
-                    src={safeSrc(
+                    src={
+                      // Priorizamos el primer asset, que debe ser la URL de GitHub Raw (1).jpg
                       producto.assets && producto.assets.length
                         ? producto.assets[0]
-                        : producto.imagen
-                    )}
+                        : // Fallback: Si no hay assets (por error en el map), usamos safeSrc
+                          safeSrc(
+                            producto.imagen,
+                            producto.atributo ?? producto.categoria
+                          )
+                    }
                     alt={producto.nombre}
                     style={{
                       height: "150px",
@@ -458,11 +537,14 @@ export default function HomePage() {
                     </Badge>
                   ) : null}
                   <ProductImage
-                    src={safeSrc(
+                    src={
                       producto.assets && producto.assets.length
                         ? producto.assets[0]
-                        : producto.imagen
-                    )}
+                        : safeSrc(
+                            producto.imagen,
+                            producto.atributo ?? producto.categoria
+                          )
+                    }
                     alt={producto.nombre}
                     style={{
                       height: "150px",

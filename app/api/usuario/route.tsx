@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-const BACKEND_BASE = "https://backendusuariogametech-production.up.railway.app";
+const BACKEND_BASE =
+  "https://backendusuariogametech-production-1e43.up.railway.app";
 
 /**
  * Helper to proxy requests to the backend API.
