@@ -435,6 +435,10 @@ export default function CheckoutPage() {
   const [offersMap, setOffersMap] = useState(new Map());
   const [offersLoading, setOffersLoading] = useState(true);
 
+  // === API FERIADOS ===
+  const [holidayInfo, setHolidayInfo] = useState(null);
+  const [loadingHoliday, setLoadingHoliday] = useState(false);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -452,6 +456,24 @@ export default function CheckoutPage() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  // === CONSULTA API DE FERIADOS ===
+  useEffect(() => {
+    const fetchHolidays = async () => {
+      setLoadingHoliday(true);
+      try {
+        const res = await fetch("/api/holidays");
+        const data = await res.json();
+        setHolidayInfo(data);
+      } catch (err) {
+        console.error("Error consultando feriados:", err);
+      } finally {
+        setLoadingHoliday(false);
+      }
+    };
+
+    fetchHolidays();
   }, []);
 
   // compute total using effective prices (offers applied if any)
@@ -736,6 +758,35 @@ export default function CheckoutPage() {
             <Card.Body>
               <h4 className="mb-3">Carrito de compra</h4>
 
+              {/* === ALERTA API FERIADOS === */}
+              {loadingHoliday && (
+                <Alert variant="info" className="mt-3">
+                  Verificando feriados nacionales…
+                </Alert>
+              )}
+
+              {holidayInfo && (
+                <Card
+                  className="mt-3 mb-3"
+                  border={holidayInfo.isHoliday ? "warning" : "success"}
+                >
+                  <Card.Body className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 className="mb-1">Estado del día</h6>
+                      <small className="text-muted">
+                        Fecha: {new Date().toLocaleDateString("es-CL")}
+                      </small>
+                    </div>
+
+                    <div className="text-end">
+                      <Badge bg={holidayInfo.isHoliday ? "warning" : "success"}>
+                        {holidayInfo.isHoliday ? "FERIADO" : "DÍA HÁBIL"}
+                      </Badge>
+                    </div>
+                  </Card.Body>
+                </Card>
+              )}
+
               {serverMsg && (
                 <Alert
                   variant={serverMsg.type}
@@ -757,7 +808,7 @@ export default function CheckoutPage() {
                   >
                     <thead>
                       <tr>
-                        <th style={{ width: 80 }}>Imagen</th>
+                        {/* 1. SE ELIMINA LA COLUMNA DE IMAGEN */}
                         <th>Nombre</th>
                         <th style={{ width: 110 }}>Precio</th>
                         <th style={{ width: 110 }}>Oferta</th>
@@ -775,33 +826,7 @@ export default function CheckoutPage() {
                             1;
                           return (
                             <tr key={it.id ?? `${it.nombre}-${Math.random()}`}>
-                              <td>
-                                {it.imagen ? (
-                                  <img
-                                    src={it.imagen}
-                                    alt={it.nombre}
-                                    style={{
-                                      width: 64,
-                                      height: 48,
-                                      objectFit: "cover",
-                                      borderRadius: 4,
-                                    }}
-                                    onError={(e) =>
-                                      (e.target.src =
-                                        "/assets/productos/placeholder.png")
-                                    }
-                                  />
-                                ) : (
-                                  <div
-                                    style={{
-                                      width: 64,
-                                      height: 48,
-                                      background: "#f5f5f5",
-                                      borderRadius: 4,
-                                    }}
-                                  />
-                                )}
-                              </td>
+                              {/* 2. SE ELIMINA LA CELDA DE LA IMAGEN */}
                               <td>{it.nombre}</td>
                               <td className="text-end">
                                 {ef && ef.oldPrice
@@ -831,8 +856,9 @@ export default function CheckoutPage() {
                         })
                       ) : (
                         <tr>
+                          {/* SE AJUSTA EL COLSPAN DE LA FILA VACÍA DE 6 A 5 */}
                           <td
-                            colSpan={6}
+                            colSpan={5}
                             className="text-center text-muted py-4"
                           >
                             Tu carrito está vacío.
@@ -1035,28 +1061,33 @@ export default function CheckoutPage() {
                     className="me-2"
                     onClick={() => router.push("/carrito")}
                   >
-                    Volver al carrito
+                    Volver al Carrito
                   </Button>
                   <Button
-                    variant="success"
                     type="submit"
-                    disabled={isSubmitting || cartItems.length === 0}
+                    variant="primary"
+                    disabled={isSubmitting || blocked || offersLoading}
                   >
-                    {isSubmitting
-                      ? "Procesando..."
-                      : `Pagar ahora $ ${Number(
-                          totalEffective || 0
-                        ).toLocaleString("es-CL")}`}
+                    {isSubmitting ? (
+                      <>
+                        <Spinner
+                          as="span"
+                          animation="border"
+                          size="sm"
+                          role="status"
+                          aria-hidden="true"
+                          className="me-1"
+                        />
+                        Procesando...
+                      </>
+                    ) : (
+                      "Confirmar Pedido y Pagar"
+                    )}
                   </Button>
                 </div>
               </Form>
             </Card.Body>
           </Card>
-
-          <div className="text-center text-muted small mt-3">
-            Nota: Si el usuario ha iniciado sesión, parte de esta información se
-            rellenará automáticamente.
-          </div>
         </Col>
       </Row>
     </Container>
