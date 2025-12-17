@@ -1,35 +1,36 @@
 import { NextResponse } from "next/server";
 
+type Holiday = {
+  date: string;
+  localName: string;
+};
+
 export async function GET() {
   try {
     const year = new Date().getFullYear();
+    const today = new Date().toISOString().split("T")[0];
 
-    const response = await fetch(
+    const res = await fetch(
       `https://date.nager.at/api/v3/PublicHolidays/${year}/CL`,
       { cache: "no-store" }
     );
 
-    if (!response.ok) {
-      throw new Error("Error al obtener feriados");
+    if (!res.ok) {
+      throw new Error("Error obteniendo feriados");
     }
 
-    const holidays = await response.json();
-
-    const today = new Date().toISOString().split("T")[0];
-
-    const isHoliday = holidays.some((h: any) => h.date === today);
+    const holidays: Holiday[] = await res.json();
+    const todayHoliday = holidays.find((h) => h.date === today);
 
     return NextResponse.json({
-      isHoliday,
-      today,
-      message: isHoliday
-        ? "Hoy es feriado, el despacho podría retrasarse"
-        : "Hoy no es feriado",
-      source: "Nager.Date API",
+      isHoliday: !!todayHoliday,
+      message: todayHoliday
+        ? `Hoy es feriado: ${todayHoliday.localName}`
+        : "Hoy es un día hábil",
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      { error: "No se pudieron obtener los feriados" },
+      { isHoliday: false, message: "No se pudo verificar feriados" },
       { status: 500 }
     );
   }
