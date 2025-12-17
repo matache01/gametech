@@ -15,17 +15,14 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
+// Asumimos que getProductImages es una función que ayuda a encontrar rutas.
+// Si no la usas, puedes comentarla o eliminarla.
 import { getProductImages } from "../../lib/assetsClient";
 
 /**
- * Cambio principal:
- * - Cuando existe producto.nombre generamos explícitamente las 4 URLs numeradas:
- *   base(1).jpg, base(2).jpg, base(3).jpg, base(4).jpg
- * - Esto garantiza que las 4 miniaturas solicitadas coincidan con el patrón del repo.
- * - Conserva el resto de prioridades (getProductImages, assets, miniaturas) pero si
- *   hay nombre usamos la estrategia numerada para garantizar exactamente 4 urls.
- *
- * No se agregan archivos nuevos. Reinicia dev server tras pegar — rm -rf .next && npm run dev.
+ * ProductoDetailPage.js - Código Ajustado
+ * * Enfocado en asegurar la generación correcta de URLs de miniaturas
+ * para la estructura 'Nombre del Producto(X).jpg' en GitHub.
  */
 
 const RAW_BASE =
@@ -37,51 +34,66 @@ function isAbsoluteUrl(s) {
   return /^data:|^https?:\/\//i.test(String(s || ""));
 }
 
+// Asegura que el nombre de la categoría coincida con el nombre de la carpeta en GitHub.
+// Asumo que tus carpetas en GitHub (Teclado, Mouse, etc.) están con la primera letra en mayúscula y singular.
 function canonicalCategory(cat) {
-  if (!cat) return "mouses";
+  if (!cat) return "Mouse";
   try {
     const nf = String(cat)
       .normalize("NFKD")
       .replace(/\p{Diacritic}/gu, "");
+
     const s = nf.toLowerCase().trim();
+
+    // Mapeo a singular y capitalizado, asumiendo la estructura de carpetas de tu repositorio
     const map = {
-      monitor: "monitores",
-      monitors: "monitores",
-      mouse: "mouses",
-      mice: "mouses",
-      mouses: "mouses",
-      teclado: "teclados",
-      teclados: "teclados",
-      audifono: "audifonos",
-      audifonos: "audifonos",
+      monitor: "Monitor",
+      monitors: "Monitor",
+      mouse: "Mouse",
+      mice: "Mouse",
+      mouses: "Mouse",
+      teclado: "Teclado",
+      teclados: "Teclado",
+      audifono: "Audifono",
+      audifonos: "Audifono",
     };
     if (map[s]) return map[s];
-    if (!s.endsWith("s")) return `${s}s`;
-    return s;
+
+    // Fallback: usar el valor tal cual con capitalización si no está mapeado
+    const original = String(cat).trim();
+    if (!original) return "Mouse";
+
+    return original.charAt(0).toUpperCase() + original.slice(1).toLowerCase();
   } catch {
-    return "mouses";
+    return "Mouse";
   }
 }
 
-function makeRawUrlIfNeeded(maybeUrlOrFilename, categoria = "mouses") {
+// Función para construir la URL completa de GitHub Raw.
+function makeRawUrlIfNeeded(maybeUrlOrFilename, categoria = "Mouse") {
   if (!maybeUrlOrFilename) return null;
   const s = String(maybeUrlOrFilename).trim();
   if (!s) return null;
+
   if (isAbsoluteUrl(s) || s.startsWith("/")) return s;
+
   try {
     const catNorm = canonicalCategory(categoria);
-    const file = encodeURIComponent(s).replace(/%2F/g, "/");
-    return `${RAW_BASE}/${encodeURIComponent(catNorm)}/${file}`.replace(
-      /%2F/g,
-      "/"
-    );
+
+    // 1. Codifica la carpeta de la categoría.
+    const encodedCat = encodeURIComponent(catNorm);
+
+    // 2. Codifica el nombre del archivo (ej. 'Logitech G502(1).jpg')
+    // Esto asegura que los espacios y caracteres especiales se manejen correctamente en la URL.
+    const encodedFile = encodeURIComponent(s).replace(/%2F/g, "/");
+
+    return `${RAW_BASE}/${encodedCat}/${encodedFile}`;
   } catch {
     return s;
   }
 }
 
 export default function ProductoDetailPage() {
-  // Hooks: orden fijo
   const { addToCart } = useCart();
   const { user } = useAuth();
 
@@ -134,86 +146,63 @@ export default function ProductoDetailPage() {
         if (p && builtFor.current !== key) {
           builtFor.current = key;
 
-          // 1) Try getProductImages to prefer indexed images (non-blocking)
-          let imgsFromLib = [];
-          try {
-            imgsFromLib = await getProductImages(
-              p.nombre || p.id,
-              normalized.atributo || "",
-              MAX_THUMBS
-            );
-            if (!Array.isArray(imgsFromLib)) imgsFromLib = [];
-          } catch {
-            imgsFromLib = [];
-          }
-
-          // Build candidate list
+          // Construcción de la lista de miniaturas
           let candidates = [];
 
-          // If product.nombre exists we MUST generate exactly the 4 numbered jpg urls:
+          // *** Lógica para generar las 4 URLs numeradas ***
+          // Esta es la parte crítica que debe coincidir con el primer componente.
           if (normalized.nombre) {
-            // use the product name as base, keep spaces and parentheses pattern: "Name(1).jpg"
             const base = String(normalized.nombre).trim();
             for (let i = 1; i <= MAX_THUMBS; i++) {
               candidates.push(`${base}(${i}).jpg`);
             }
-          } else {
-            // Fallback flow when no nombre: prefer imgsFromLib -> assets -> miniaturas -> imagen -> guesses
-            // imgsFromLib
+          }
+
+          // Si no hay nombre (o para llenar vacíos si se necesitan más), usamos fallbacks.
+          if (candidates.length < MAX_THUMBS) {
+            // Fallback: prefer imgsFromLib -> assets -> miniaturas -> imagen
+            let imgsFromLib = [];
+            try {
+              // Si la función getProductImages existe y funciona:
+              imgsFromLib = await getProductImages(
+                p.nombre || p.id,
+                normalized.atributo || "",
+                MAX_THUMBS
+              );
+              if (!Array.isArray(imgsFromLib)) imgsFromLib = [];
+            } catch {
+              imgsFromLib = [];
+            }
             if (Array.isArray(imgsFromLib) && imgsFromLib.length) {
               candidates.push(...imgsFromLib);
             }
-            // backend assets
             if (Array.isArray(normalized.assets) && normalized.assets.length) {
               for (const a of normalized.assets) candidates.push(a);
             }
-            // miniaturas
             if (
               Array.isArray(normalized.miniaturas) &&
               normalized.miniaturas.length
             ) {
               for (const m of normalized.miniaturas) candidates.push(m);
             }
-            // main image
             if (normalized.imagen) candidates.push(normalized.imagen);
-            // if still short, generate numbered png/jpg guesses from imagen/name
-            if (candidates.length < MAX_THUMBS) {
-              const seeds = [];
-              if (normalized.imagen) {
-                try {
-                  const u = new URL(normalized.imagen);
-                  seeds.push(
-                    u.pathname
-                      .split("/")
-                      .pop()
-                      .replace(/\.[^.]+$/, "")
-                  );
-                } catch {
-                  seeds.push(String(normalized.imagen).replace(/\.[^.]+$/, ""));
-                }
-              }
-              if (normalized.nombre) seeds.push(String(normalized.nombre));
-              for (const s of seeds) {
-                for (
-                  let i = 1;
-                  i <= MAX_THUMBS && candidates.length < MAX_THUMBS;
-                  i++
-                ) {
-                  candidates.push(`${s}(${i}).png`);
-                }
-              }
-            }
           }
+          // **********************************************
 
-          // Normalize candidates to raw URLs (only convert non-absolute entries)
+          // Normaliza candidatos a URLs de GitHub Raw
           const urls = [];
           const seen = new Set();
+          const categoryForUrl = normalized.atributo || "Mouse"; // Usar la categoría normalizada
+
           for (const c of candidates) {
             if (!c) continue;
             let url = c;
+
+            // Si NO es una URL absoluta o ruta local, la convertimos a URL de GitHub Raw
             if (!isAbsoluteUrl(c) && !String(c).startsWith("/")) {
-              url = makeRawUrlIfNeeded(c, normalized.atributo || "mouses");
+              url = makeRawUrlIfNeeded(c, categoryForUrl);
             }
+
             if (!url) continue;
             if (!seen.has(url)) {
               seen.add(url);
@@ -226,11 +215,12 @@ export default function ProductoDetailPage() {
 
           if (mounted) {
             setImagenPrincipal(urls[0] || PLACEHOLDER);
+            // Almacena las URLs generadas en 'assets' del producto para usarlas en las miniaturas
             setProducto((prev) => ({ ...(prev || {}), assets: urls }));
             console.debug("[producto_detail] constructed urls:", urls);
           }
         } else {
-          // already built: ensure main image
+          // Lógica de re-render (ya construido): asegura la imagen principal
           if (p) {
             const imgs =
               Array.isArray(p.assets) && p.assets.length ? p.assets : [];
@@ -285,7 +275,7 @@ export default function ProductoDetailPage() {
     return (
       makeRawUrlIfNeeded(
         str,
-        producto?.atributo || producto?.categoria || "mouses"
+        producto?.atributo || producto?.categoria || "Mouse" // Usar "Mouse" o el valor que coincida con tu carpeta por defecto
       ) || PLACEHOLDER
     );
   };
@@ -299,9 +289,11 @@ export default function ProductoDetailPage() {
       if (!out.includes(r)) out.push(r);
     };
 
+    // Usar las URLs construidas y almacenadas en producto.assets
     if (Array.isArray(producto?.assets) && producto.assets.length) {
       for (const a of producto.assets) push(a);
     } else {
+      // Fallback si por alguna razón no se construyeron los assets
       push(producto?.imagen);
       if (Array.isArray(producto?.miniaturas)) {
         for (const m of producto.miniaturas) push(m);
@@ -321,11 +313,13 @@ export default function ProductoDetailPage() {
   const thumbs = buildThumbs();
 
   if (!producto) {
+    // Si todavía está cargando y no hay producto, puedes mostrar un spinner.
+    // Aquí usamos la comprobación simple de null.
     return (
       <Container className="py-4">
         <div className="text-center">
-          <h2>Producto no encontrado</h2>
-          <p>El producto que buscas no existe.</p>
+          <h2>Cargando o Producto no encontrado</h2>
+          <p>Por favor, espere o verifique la URL.</p>
           <Link href="/productos" className="btn btn-primary">
             Volver a Productos
           </Link>
@@ -410,6 +404,7 @@ export default function ProductoDetailPage() {
               }}
             >
               <img
+                // Usa safeSrc para garantizar la URL codificada final
                 src={safeSrc(imagenPrincipal)}
                 alt={producto.nombre}
                 style={{ width: "100%", objectFit: "contain", maxHeight: 520 }}

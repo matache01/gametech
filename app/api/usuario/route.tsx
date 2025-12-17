@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 
-const BACKEND_BASE = "https://backendusuariogametech-production.up.railway.app";
+const BACKEND_BASE =
+  "https://backendusuariogametech-production-1e43.up.railway.app";
+
+type BackendUser = {
+  id?: number | string;
+  email?: string;
+  contrasenia?: string;
+  [key: string]: unknown;
+};
 
 /**
  * Helper to proxy requests to the backend API.
@@ -17,17 +25,16 @@ async function proxyFetch(path: string, options: RequestInit = {}) {
       ...options,
     });
 
-    // Try to parse JSON, but fallback to text if no JSON
-    let data = null;
+    let data: unknown = null;
     const text = await res.text();
     try {
       data = text ? JSON.parse(text) : null;
-    } catch (e) {
+    } catch {
       data = text;
     }
 
     return { ok: res.ok, status: res.status, data };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       ok: false,
       status: 502,
@@ -55,32 +62,38 @@ export async function GET(request: Request) {
     }
 
     if (email && contrasenia) {
-      // no dedicated login endpoint: fetch all users and match
       const { ok, status, data } = await proxyFetch(`/api/v1/usuarios`);
       if (!ok) return NextResponse.json({ error: data }, { status });
-      if (!Array.isArray(data))
+
+      if (!Array.isArray(data)) {
         return NextResponse.json(
           { error: "Unexpected backend response" },
           { status: 502 }
         );
+      }
 
-      const found = data.find(
-        (u: any) =>
-          String(u.email).toLowerCase() === String(email).toLowerCase() &&
-          String(u.contrasenia) === String(contrasenia)
+      const users = data as BackendUser[];
+
+      const found = users.find(
+        (u) =>
+          String(u.email ?? "").toLowerCase() === String(email).toLowerCase() &&
+          String(u.contrasenia ?? "") === String(contrasenia)
       );
-      if (!found)
+
+      if (!found) {
         return NextResponse.json(
           { message: "Invalid credentials" },
           { status: 401 }
         );
+      }
+
       return NextResponse.json(found, { status: 200 });
     }
 
     const { ok, status, data } = await proxyFetch(`/api/v1/usuarios`);
     if (!ok) return NextResponse.json({ error: data }, { status });
     return NextResponse.json(data, { status });
-  } catch (error) {
+  } catch (error: unknown) {
     return NextResponse.json(
       { message: "Server error", error: String(error) },
       { status: 500 }
@@ -93,13 +106,16 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) || {};
+    const body: Record<string, unknown> = await request.json();
 
-    if (!body.telefono || Number(body.telefono) <= 0) body.telefono = 0;
-    if (!body.fechaCreacion) {
-      body.fechaCreacion = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    if (!body["telefono"] || Number(body["telefono"]) <= 0)
+      body["telefono"] = 0;
+
+    if (!body["fechaCreacion"]) {
+      body["fechaCreacion"] = new Date().toISOString().split("T")[0];
     }
-    if (!body.rol) body.rol = "cliente";
+
+    if (!body["rol"]) body["rol"] = "cliente";
 
     const { ok, status, data } = await proxyFetch(`/api/v1/usuarios`, {
       method: "POST",
@@ -108,7 +124,7 @@ export async function POST(request: Request) {
 
     if (!ok) return NextResponse.json({ error: data }, { status });
     return NextResponse.json(data, { status });
-  } catch (error) {
+  } catch (error: unknown) {
     return NextResponse.json(
       { message: "Invalid request body", error: String(error) },
       { status: 400 }
@@ -123,8 +139,8 @@ export async function PUT(request: Request) {
   try {
     const url = new URL(request.url);
     const idParam = url.searchParams.get("id");
-    const body = (await request.json()) || {};
-    const id = idParam || body.id;
+    const body: Record<string, unknown> = await request.json();
+    const id = idParam || String(body["id"] ?? "");
 
     if (!id) {
       return NextResponse.json(
@@ -143,7 +159,7 @@ export async function PUT(request: Request) {
 
     if (!ok) return NextResponse.json({ error: data }, { status });
     return NextResponse.json(data, { status });
-  } catch (error) {
+  } catch (error: unknown) {
     return NextResponse.json(
       { message: "Invalid request body", error: String(error) },
       { status: 400 }
@@ -153,7 +169,6 @@ export async function PUT(request: Request) {
 
 /**
  * DELETE -> delete a user by id
- * Important: backend may return 204 No Content. NextResponse.json must NOT be used with 204.
  */
 export async function DELETE(request: Request) {
   try {
@@ -169,23 +184,19 @@ export async function DELETE(request: Request) {
 
     const { ok, status, data } = await proxyFetch(
       `/api/v1/usuarios/id/${encodeURIComponent(id)}`,
-      {
-        method: "DELETE",
-      }
+      { method: "DELETE" }
     );
 
-    // If backend returned 204 No Content -> return an empty NextResponse with 204 status
     if (status === 204) {
       return new NextResponse(null, { status: 204 });
     }
 
-    // For other statuses, forward appropriately
     if (!ok) {
       return NextResponse.json({ error: data }, { status });
     }
 
     return NextResponse.json(data ?? { message: "Deleted" }, { status });
-  } catch (error) {
+  } catch (error: unknown) {
     return NextResponse.json(
       { message: "Server error", error: String(error) },
       { status: 500 }
@@ -194,7 +205,7 @@ export async function DELETE(request: Request) {
 }
 
 /**
- * OPTIONS -> respond to preflight CORS checks
+ * OPTIONS -> CORS preflight
  */
 export async function OPTIONS() {
   return new NextResponse(null, {

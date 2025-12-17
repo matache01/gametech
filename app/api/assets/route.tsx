@@ -130,11 +130,6 @@ function buildUrl(
   return { fileDirect, folderPattern };
 }
 
-function buildPatterns(basePattern: string) {
-  // Aquí basePattern no se usa: usamos RAW_BASE + baseDir, y patrones file/folder se crean en buildUrl.
-  return [basePattern];
-}
-
 async function urlExists(url: string): Promise<boolean> {
   try {
     const headRes = await fetch(url, { method: "HEAD" });

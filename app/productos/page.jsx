@@ -15,11 +15,31 @@ import {
 } from "react-bootstrap";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
-import { getProductImages } from "../lib/assetsClient";
 
-function normalizeId(v) {
-  return String(v ?? "").trim();
-}
+const GITHUB_RAW_BASE =
+  "https://raw.githubusercontent.com/felipesalazar24/ctrlstore-images/main/products";
+
+const PRODUCT_IMAGES = {
+  "Logitech G502": `${GITHUB_RAW_BASE}/Mouse/Logitech G502(1).jpg`,
+  "Logitech G305 LightSpeed Wireless": `${GITHUB_RAW_BASE}/Mouse/Logitech G305 LightSpeed Wireless(1).jpg`,
+  "Logitech G203 Lightsync Blue": `${GITHUB_RAW_BASE}/Mouse/Logitech G203 Lightsync Blue(1).jpg`,
+  "Redragon Kumara K552 Rainbow": `${GITHUB_RAW_BASE}/Teclado/Redragon Kumara K552 Rainbow(1).jpg`,
+  "Logitech G PRO X TKL": `${GITHUB_RAW_BASE}/Teclado/Logitech G PRO X TKL(1).jpg`,
+  "Razer BlackWidow V4 75% - Black": `${GITHUB_RAW_BASE}/Teclado/Razer BlackWidow V4 75 - Black(1).jpg`,
+  "Logitech G435 - Black/Yellow": `${GITHUB_RAW_BASE}/Audifono/Logitech G435 - Black/Yellow(1).jpg`,
+  "Razer BlackShark V2 X": `${GITHUB_RAW_BASE}/Audifono/Razer BlackShark V2 X(1).jpg`,
+  "Logitech G335 - Black": `${GITHUB_RAW_BASE}/Audifono/Logitech G335 - Black(1).jpg`,
+  "Xiaomi A27Qi": `${GITHUB_RAW_BASE}/Monitor/Xiaomi A27Qi(1).jpg`,
+  "LG UltraGear 24GS60F-B": `${GITHUB_RAW_BASE}/Monitor/LG UltraGear 24GS60F-B(1).jpg`,
+  "Xiaomi G34WQi": `${GITHUB_RAW_BASE}/Monitor/Xiaomi G34WQi(1).jpg`,
+};
+
+const getProductImageUrl = (producto) => {
+  if (PRODUCT_IMAGES[producto.nombre]) {
+    return PRODUCT_IMAGES[producto.nombre];
+  }
+  return "/assets/productos/placeholder.png";
+};
 
 const safeSrc = (s) => {
   if (!s) return "/assets/productos/placeholder.png";
@@ -55,12 +75,8 @@ export default function ProductosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // pagination state
   const PAGE_SIZE = 40;
   const [page, setPage] = useState(1);
-
-  // images state map id->images
-  const [imagesMap, setImagesMap] = useState(new Map());
 
   useEffect(() => {
     let mounted = true;
@@ -72,24 +88,6 @@ export default function ProductosPage() {
         if (!mounted) return;
         setProductos(prodData);
         setPage(1);
-
-        // prefetch images for first page
-        const pageItems = prodData.slice(0, PAGE_SIZE);
-        const promises = pageItems.map(async (p) => {
-          const imgs = await getProductImages(
-            p.nombre || p.nombre || p.id,
-            p.atributo || p.categoria || "",
-            4
-          );
-          return [String(p.id ?? p._id ?? p.nombre), imgs];
-        });
-        const results = await Promise.all(promises);
-        if (!mounted) return;
-        setImagesMap((prev) => {
-          const map = new Map(prev);
-          for (const [k, imgs] of results) map.set(k, imgs);
-          return map;
-        });
       } catch (err) {
         console.error(err);
         if (!mounted) return;
@@ -119,43 +117,15 @@ export default function ProductosPage() {
     1,
     Math.ceil((productos?.length || 0) / PAGE_SIZE)
   );
+
   useEffect(() => {
     if (page > totalPages) setPage(1);
-  }, [totalPages]);
+  }, [totalPages, page]);
 
   const paginatedProducts = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
     return (productos || []).slice(start, start + PAGE_SIZE);
   }, [productos, page]);
-
-  // when page changes, ensure we have images for displayed items
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const toLoad = paginatedProducts.filter(
-        (p) => !imagesMap.has(String(p.id ?? p._id ?? p.nombre))
-      );
-      if (!toLoad.length) return;
-      const promises = toLoad.map(async (p) => {
-        const imgs = await getProductImages(
-          p.nombre || p.nombre || p.id,
-          p.atributo || p.categoria || "",
-          4
-        );
-        return [String(p.id ?? p._id ?? p.nombre), imgs];
-      });
-      const results = await Promise.all(promises);
-      if (!mounted) return;
-      setImagesMap((prev) => {
-        const map = new Map(prev);
-        for (const [k, imgs] of results) map.set(k, imgs);
-        return map;
-      });
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [paginatedProducts]);
 
   if (loading) {
     return (
@@ -202,7 +172,36 @@ export default function ProductosPage() {
     <Container className="py-5">
       {totalPages > 1 && (
         <div className="d-flex justify-content-center mb-3">
-          <Pagination>...</Pagination>
+          <Pagination>
+            <Pagination.First
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+            />
+            <Pagination.Prev
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page === 1}
+            />
+            {[...Array(Math.min(5, totalPages))].map((_, idx) => {
+              const pageNum = idx + 1;
+              return (
+                <Pagination.Item
+                  key={pageNum}
+                  active={pageNum === page}
+                  onClick={() => setPage(pageNum)}
+                >
+                  {pageNum}
+                </Pagination.Item>
+              );
+            })}
+            <Pagination.Next
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+            />
+            <Pagination.Last
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+            />
+          </Pagination>
         </div>
       )}
 
@@ -212,22 +211,19 @@ export default function ProductosPage() {
           const displayPrice = offer
             ? offer.newPrice
             : p.precio ?? p.price ?? 0;
-          const imgs = imagesMap.get(String(p.id ?? p._id ?? p.nombre)) || [];
+
           return (
             <Col key={p.id ?? p._id ?? p.sku}>
               <Card className="h-100 shadow-sm">
                 <div style={{ padding: 18, textAlign: "center" }}>
                   <img
-                    src={safeSrc(
-                      imgs.length
-                        ? imgs[0]
-                        : p.imagen || "/assets/productos/placeholder.png"
-                    )}
+                    src={safeSrc(getProductImageUrl(p))}
                     alt={p.nombre}
                     style={{ width: "100%", height: 180, objectFit: "contain" }}
-                    onError={(e) =>
-                      (e.target.src = "/assets/productos/placeholder.png")
-                    }
+                    onError={(e) => {
+                      console.error(`Error cargando: ${e.target.src}`);
+                      e.target.src = "/assets/productos/placeholder.png";
+                    }}
                   />
                 </div>
 
@@ -300,7 +296,24 @@ export default function ProductosPage() {
 
       {totalPages > 1 && (
         <div className="d-flex justify-content-center mt-4">
-          <Pagination>...</Pagination>
+          <Pagination>
+            <Pagination.First
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+            />
+            <Pagination.Prev
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page === 1}
+            />
+            <Pagination.Next
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+            />
+            <Pagination.Last
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+            />
+          </Pagination>
         </div>
       )}
     </Container>
